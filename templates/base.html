@@ -1,0 +1,75 @@
+{% extends "bootstrap/base.html" %}
+{% import "wtf.html" as wtf %}
+{% import "bootstrap/fixes.html" as fixes %}
+{% import "bootstrap/utils.html" as util %}
+
+{% block title %}Preservica Spreadsheet Converter{% endblock %}
+
+
+
+{% block content %}
+{{util.flashed_messages(dismissible=True)}}
+<div class="container">
+  <h1>Spreadsheet to XML</h1>
+
+  <h2>Upload Your CSV File</h2>
+  {{
+    wtf.quick_form(form, form_type='horizontal', button_map={'submit_button': 'primary'})
+  }}
+
+
+</div>
+{% endblock %}
+
+{% block head %}
+{{super()}}
+{{fixes.ie8()}}
+{% endblock %}
+
+
+{% block styles -%}
+    {{super()}}
+    <link rel="stylesheet" type="text/css" href="{{url_for('static', filename='sample-app.css')}}">
+
+    <style>
+
+    body {
+    	font: 125% georgia, sans-serif;
+    	line-height: 1.88889;
+    	color: #555753;
+    	background: #ebe6da;
+    	margin: 0;
+    	padding: 0;
+	}
+
+#loader {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  width: 150px;
+  height: 150px;
+  margin: -75px 0 0 -75px;
+  border: 16px solid #f3f3f3;
+  border-radius: 50%;
+  border-top: 16px solid blue;
+  border-right: 16px solid green;
+  border-bottom: 16px solid red;
+  border-left: 16px solid pink;
+  -webkit-animation: spin 2s linear infinite;
+  animation: spin 2s linear infinite;
+}
+
+@-webkit-keyframes spin {
+  0% { -webkit-transform: rotate(0deg); }
+  100% { -webkit-transform: rotate(360deg); }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+
+    </style>
+{% endblock %}

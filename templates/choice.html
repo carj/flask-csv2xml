@@ -1,0 +1,35 @@
+{%- extends "base.html" %}
+
+{% block title %}Preservica Spreadsheet Converter{% endblock %}
+
+
+
+
+{% block content %}
+{{util.flashed_messages(dismissible=True)}}
+<div class="container">
+
+  <script type="text/javascript">
+        function showcursor(){
+            document.getElementById("loader").style.display = "block";
+            return true;
+        }
+</script>
+
+  <h1>Spreadsheet to XML</h1>
+
+  <h2>Select the XML File Name</h2>
+  {{
+    wtf.quick_form(form, form_type='horizontal', button_map={'submit_button': 'primary'})
+  }}
+
+  <div id="loader" class="loader" style="display:none;></div>
+
+</div>
+{% endblock %}
+
+{% block head %}
+{{super()}}
+{{fixes.ie8()}}
+{% endblock %}
+
