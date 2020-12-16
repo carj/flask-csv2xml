@@ -105,7 +105,8 @@ def select():
 
         extra_ns = {}
         for prefix, namespace in zip(sorted(prefixes), form.optional_additional_namespaces.entries):
-            extra_ns[prefix] = namespace.data
+            if namespace.data:
+                extra_ns[prefix] = namespace.data
 
         print(extra_ns)
 
