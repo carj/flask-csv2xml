@@ -1,6 +1,6 @@
 {%- extends "base.html" %}
 
-{% block title %}Preservica Spreadsheet Converter{% endblock %}
+
 
 
 
@@ -14,6 +14,35 @@
     wtf.quick_form(form, form_type='horizontal', button_map={'submit_button': 'primary'})
   }}
 
+
+</div>
+
+<div class="container">
+
+    <h2>Information</h2>
+
+    <h3>XML Namespaces</h3>
+    <span>
+        XML namespaces are used for providing uniquely named elements and attributes in an XML document.
+        </br>
+        The default namespace declaration has the following syntax. <code>xmlns="URI"</code>
+        </br>
+        Namespaces are used within Preservica to identify the XML document and allow users to assign custom viewers and editors.
+        </br>
+        You can re-use existing namespaces for standard schema's such as:
+        <ul>
+            <li><a href="https://www.dublincore.org/specifications/dublin-core/dcmi-namespace/">http://purl.org/dc/elements/1.1/</a></li>
+            <li><a href="https://www.loc.gov/ead/eadschema.html">urn:isbn:1-931666-22-9</a></li>
+        </ul>
+        You can also create your own custom namespace. e.g.  http://test.com/my-namespace.com
+    </span>
+
+    <h3>XML Root Elements</h3>
+    <span>
+        The root element is the top level element within the XML document.
+        </br>
+        XML documents must contain one root element that is the parent of all other elements (spreasheet column names)
+    </span>
 
 </div>
 
