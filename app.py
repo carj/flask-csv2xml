@@ -2,8 +2,9 @@ import os
 import csv
 import time
 import shutil
+import xml
 import zipfile
-
+from xml.dom.minidom import parse
 from pyPreservica import cvs_to_xml, csv_to_search_xml, cvs_to_cmis_xslt, cvs_to_xsd
 from flask import Flask, redirect, url_for, session, request, send_file, flash
 from werkzeug.utils import secure_filename
@@ -46,8 +47,14 @@ class ColumnSelect(FlaskForm):
     options = list()
     options.append((".xml", "XML Convention (.xml)"))
     options.append((".metadata", "Preservica Convention: Compatible with SIP Creator and PUT (.metadata)"))
-    xml_extenstion = RadioField(label="Select XML Naming Convention", description="Select XML Naming Convention",
-                                validators=[Required()], choices=options, default='.xml')
+    xml_extension = RadioField(label="Select XML Naming Convention", description="Select XML Naming Convention",
+                               validators=[Required()], choices=options, default='.xml')
+
+    options_format = list()
+    options_format.append(("pretty", "Format The XML for Humans"))
+    options_format.append(("basic", "Leave it Compact for Computers"))
+    xml_formatting = RadioField(label="Select XML Formatting", description="XML Formatting",
+                                validators=[Required()], choices=options_format, default='pretty')
 
     submit_button = SubmitField('Generate XML', render_kw={"onclick": "showcursor()"})
 
@@ -105,16 +112,16 @@ def select():
 
         extra_ns = {}
         for prefix, namespace in zip(sorted(prefixes), form.optional_additional_namespaces.entries):
+            print(prefix, namespace.data)
             if namespace.data:
                 extra_ns[prefix] = namespace.data
-
-        print(extra_ns)
 
         namespace = session['NS']
         element = session['ROOT']
         path = session['CSV']
 
-        xml_extension = form.xml_extenstion.data
+        xml_extension = form.xml_extension.data
+        xml_format = form.xml_formatting.data
 
         client = session['client']
         folder = os.path.join(app.config['UPLOAD_FOLDER'], client)
@@ -126,24 +133,51 @@ def select():
             pass
 
         with zipfile.ZipFile(zipFile, 'w') as myzip:
-            for xml in cvs_to_xml(csv_file=path, root_element=element, xml_namespace=namespace, file_name_column=column,
+            for xml_file in cvs_to_xml(csv_file=path, root_element=element, xml_namespace=namespace, file_name_column=column,
                                   export_folder=folder, additional_namespaces=extra_ns):
-                file_name = os.path.basename(xml)
+                file_name = os.path.basename(xml_file)
+
                 if xml_extension == ".metadata":
                     head, _sep, tail = file_name.rpartition(".")
                     file_name = head + xml_extension
-                myzip.write(xml, arcname=file_name)
+
+                if xml_format == "pretty":
+                    dom = xml.dom.minidom.parse(xml_file)
+                    myzip.writestr(zinfo_or_arcname=file_name, data=dom.toprettyxml(encoding="UTF-8"))
+                else:
+                    myzip.write(xml_file, arcname=file_name)
                 try:
-                    os.remove(xml)
+                    os.remove(xml_file)
                 except OSError:
                     pass
 
         search_xml = csv_to_search_xml(csv_file=path, root_element=element, xml_namespace=namespace,
                                        title="Metadata Title", export_folder=folder, additional_namespaces=extra_ns)
+
+        if xml_format == "pretty":
+            dom = xml.dom.minidom.parse(search_xml)
+            xml_string = dom.toprettyxml(encoding="UTF-8").decode("utf-8")
+            f = open(search_xml, "wt", encoding="UTF-8")
+            f.write(xml_string)
+            f.close()
+
         xsd = cvs_to_xsd(csv_file=path, root_element=element, xml_namespace=namespace, export_folder=folder,
                          additional_namespaces=extra_ns)
+        if xml_format == "pretty":
+            dom = xml.dom.minidom.parse(xsd)
+            xml_string = dom.toprettyxml(encoding="UTF-8").decode("utf-8")
+            f = open(xsd, "wt", encoding="UTF-8")
+            f.write(xml_string)
+            f.close()
+
         cmis = cvs_to_cmis_xslt(csv_file=path, root_element=element, xml_namespace=namespace, title="Metadata Title",
                                 export_folder=folder, additional_namespaces=extra_ns)
+        if xml_format == "pretty":
+            dom = xml.dom.minidom.parse(cmis)
+            xml_string = dom.toprettyxml(encoding="UTF-8").decode("utf-8")
+            f = open(cmis, "wt", encoding="UTF-8")
+            f.write(xml_string)
+            f.close()
 
         session['XML_ZIP'] = zipFile
         session['XSD_File'] = xsd
