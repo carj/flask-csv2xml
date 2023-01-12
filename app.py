@@ -1,20 +1,28 @@
-import os
+
 import csv
-import time
+import os
 import shutil
+import time
 import xml
+import xml.etree.ElementTree as ET
 import zipfile
 from xml.dom.minidom import parse
-from pyPreservica import cvs_to_xml, csv_to_search_xml, cvs_to_cmis_xslt, cvs_to_xsd
-from flask import Flask, redirect, url_for, session, request, send_file, flash
-from werkzeug.utils import secure_filename
+
+from flask import Flask, redirect, url_for, session, send_file, flash
 from flask import render_template
 from flask_bootstrap import Bootstrap
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileAllowed, FileRequired
-from wtforms import TextField, SelectField, HiddenField, ValidationError, RadioField, SubmitField, FormField, \
-    validators, FieldList, StringField
-from wtforms.validators import Required, Length, DataRequired
+from pyPreservica import cvs_to_xml, csv_to_search_xml, cvs_to_cmis_xslt, cvs_to_xsd
+from werkzeug.utils import secure_filename
+from wtforms import SelectField, RadioField, SubmitField, FieldList, StringField
+from wtforms.validators import Length, DataRequired
+
+opex_ns = {"opex": "http://www.openpreservationexchange.org/opex/v1.2"}
+
+xml.etree.ElementTree.register_namespace("oai_dc", "http://www.openarchives.org/OAI/2.0/oai_dc/")
+xml.etree.ElementTree.register_namespace("ead", "urn:isbn:1-931666-22-9")
+xml.etree.ElementTree.register_namespace("opex", opex_ns['opex'])
 
 NS_HELP = """
         This will become the default namespace of the XML documents, e.g. http://www.openarchives.org/OAI/2.0/oai_dc/
@@ -32,8 +40,8 @@ class DownloadForm(FlaskForm):
 
 
 class CSVUploadForm(FlaskForm):
-    root_element = TextField('The Root Element Name', description=ROOT_HELP, validators=[Required(), Length(max=25)])
-    namespace = TextField('Default Namespace For The Root Element', description=NS_HELP, validators=[Required()])
+    root_element = StringField('The Root Element Name', description=ROOT_HELP, validators=[DataRequired(), Length(max=25)])
+    namespace = StringField('Default Namespace For The Root Element', description=NS_HELP, validators=[DataRequired()])
     cvs_file = FileField("CSV File", validators=[FileRequired(), FileAllowed(['csv'], 'CSV Files Only')],
                          description='Make sure the Excel Spreadsheet has been saved as UTF-8 CSV',
                          render_kw={"accept": ".csv,.CSV"})
@@ -42,23 +50,32 @@ class CSVUploadForm(FlaskForm):
 
 class ColumnSelect(FlaskForm):
     column = SelectField('Unique CSV Column',
-                         description='Select a column which will be used to name the XML files. The value of this column should be different for each row of the spreadsheet.',
+                         description='Select a column which will be used to name the XML files. The value of this '
+                                     'column should be different for each row of the spreadsheet. '
+                                     'If the spreadsheet has a column containing the file name, use that column',
                          coerce=str)
     options = list()
     options.append((".xml", "XML Convention (.xml)"))
-    options.append((".metadata", "Preservica Convention: Compatible with SIP Creator and PUT (.metadata)"))
+    options.append((".metadata", "Preservica Convention: Compatible with SIP Creator (.metadata)"))
+    options.append((".opex", "Preservica Convention: Compatible with PUT Tool (.opex)"))
     xml_extension = RadioField(label="Select XML Naming Convention", description="Select XML Naming Convention",
-                               validators=[Required()], choices=options, default='.xml')
+                               validators=[DataRequired()], choices=options, default='.xml')
 
     options_format = list()
     options_format.append(("pretty", "Format The XML for Humans"))
     options_format.append(("basic", "Leave it Compact for Computers"))
     xml_formatting = RadioField(label="Select XML Formatting", description="XML Formatting",
-                                validators=[Required()], choices=options_format, default='pretty')
+                                validators=[DataRequired()], choices=options_format, default='pretty')
+
+    options_exclude_name = list()
+    options_exclude_name.append(("include", "Include the Unique CSV Column in the XML"))
+    options_exclude_name.append(("exclude", "Exclude the Unique CSV Column from the XML"))
+    xml_exclude_name = RadioField(label="Include Unique CSV Column", description="",
+                                  validators=[DataRequired()], choices=options_exclude_name, default='include')
 
     submit_button = SubmitField('Generate XML', render_kw={"onclick": "showcursor()"})
 
-    optional_additional_namespaces = FieldList(TextField(label="", description="", render_kw={"size": "75"}),
+    optional_additional_namespaces = FieldList(StringField(label="", description="", render_kw={"size": "75"}),
                                                min_entries=0, max_entries=25)
 
 
@@ -68,7 +85,7 @@ bootstrap = Bootstrap(app)
 SECRET_KEY = os.urandom(32)
 app.config['SECRET_KEY'] = SECRET_KEY
 app.secret_key = SECRET_KEY
-app.config['UPLOAD_FOLDER'] = 'static/'
+app.config['UPLOAD_FOLDER'] = '/home/opextest/mysite/static/'
 
 
 @app.route('/download', methods=('GET', 'POST'))
@@ -112,7 +129,6 @@ def select():
 
         extra_ns = {}
         for prefix, namespace in zip(sorted(prefixes), form.optional_additional_namespaces.entries):
-            print(prefix, namespace.data)
             if namespace.data:
                 extra_ns[prefix] = namespace.data
 
@@ -122,6 +138,7 @@ def select():
 
         xml_extension = form.xml_extension.data
         xml_format = form.xml_formatting.data
+        xml_exclude = form.xml_exclude_name.data
 
         client = session['client']
         folder = os.path.join(app.config['UPLOAD_FOLDER'], client)
@@ -133,9 +150,35 @@ def select():
             pass
 
         with zipfile.ZipFile(zipFile, 'w') as myzip:
-            for xml_file in cvs_to_xml(csv_file=path, root_element=element, xml_namespace=namespace, file_name_column=column,
-                                  export_folder=folder, additional_namespaces=extra_ns):
+            for xml_file in cvs_to_xml(csv_file=path, root_element=element, xml_namespace=namespace,
+                                       file_name_column=column,
+                                       export_folder=folder, additional_namespaces=extra_ns):
                 file_name = os.path.basename(xml_file)
+
+                if xml_exclude == "exclude":
+                    tree = ET.parse(xml_file)
+                    root = tree.getroot()
+                    tag = ""
+                    for item in root:
+                        _, _, tag = item.tag.rpartition('}')
+                        if tag == column.replace(" ", ""):
+                            print(tag)
+                            root.remove(item)
+                    fd = open(xml_file, "w", encoding="utf-8")
+                    fd.write(ET.tostring(root, encoding="UTF-8").decode("utf-8"))
+                    fd.close()
+
+                if xml_extension == ".opex":
+                    opex_doc = xml.etree.ElementTree.Element(ET.QName(opex_ns["opex"], 'OPEXMetadata'))
+                    dm = xml.etree.ElementTree.SubElement(opex_doc, ET.QName(opex_ns["opex"], "DescriptiveMetadata"))
+                    with open(xml_file, 'r', encoding="utf-8") as md:
+                        tree = xml.etree.ElementTree.parse(md)
+                        dm.append(tree.getroot())
+                        fd = open(xml_file, "w", encoding="utf-8")
+                        fd.write(ET.tostring(opex_doc, encoding="UTF-8").decode("utf-8"))
+                        fd.close()
+                    head, _sep, tail = file_name.rpartition(".")
+                    file_name = head +".opex"
 
                 if xml_extension == ".metadata":
                     head, _sep, tail = file_name.rpartition(".")
